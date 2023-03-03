@@ -1,4 +1,13 @@
 import React, { Component } from "react";
+import Axios from "axios";
+
+import { setInterview } from "helpers/reducers";
+import {
+  getTotalInterviews,
+  getLeastPopularTimeSlot,
+  getMostPopularDay,
+  getInterviewsPerDay
+ } from "helpers/selectors";
 
 import classnames from "classnames";
 import Loading from "./Loading";
@@ -36,8 +45,50 @@ const data = [
 
 class Dashboard extends Component {
   state = {
-    loading: false
+    loading: true,
+    focused: null,
+    days: [],
+    appointments: {},
+    interviewers: {}
   };
+
+  componentDidMount() {
+    const focused = JSON.parse(localStorage.getItem("focused"));
+    Promise.all([
+      Axios.get("/api/days"),
+      Axios.get("/api/appointments"),
+      Axios.get("/api/interviewers")
+    ]).then(([days, appointments, interviewers]) => {
+      this.setState({
+        loading: false,
+        days: days.data,
+        appointments: appointments.data,
+        interviewers: interviewers.data
+      });
+    });
+
+    this.socket = new WebSocket(process.env.REACT_APP_WEBSOCKET_URL);
+
+    this.socket.onmessage = event => {
+      const data = JSON.parse(event.data);
+    
+      if (typeof data === "object" && data.type === "SET_INTERVIEW") {
+        this.setState(previousState =>
+          setInterview(previousState, data.id, data.interview)
+        );
+      }
+    };
+    if (focused) {
+      this.setState({ focused });
+    }
+  }
+
+  componentDidUpdate(previousProps, previousState) {
+    if (previousState.focused !== this.state.focused) {
+      localStorage.setItem("focused", JSON.stringify(this.state.focused));
+    }
+  }
+
 
   selectPanel(id) {
     this.setState(previousState => ({
@@ -61,7 +112,7 @@ class Dashboard extends Component {
      <Panel
       key={panel.id}
       label={panel.label}
-      value={panel.value}
+      value={panel.getValue(this.state)}
       onSelect={event => this.selectPanel(panel.id)}
      />
     ));
